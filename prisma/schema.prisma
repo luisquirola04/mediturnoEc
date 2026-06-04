@@ -1,0 +1,291 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
+
+enum BloodType {
+  A_POSITIVE
+  A_NEGATIVE
+  B_POSITIVE
+  B_NEGATIVE
+  AB_POSITIVE
+  AB_NEGATIVE
+  O_POSITIVE
+  O_NEGATIVE
+}
+
+enum StateDoctor {
+  Pending
+  Approved
+  Rejected
+}
+
+enum StateAppointment {
+  Pending
+  Approved
+  Rejected
+  Completed
+}
+
+enum NotificationType {
+  Doctor
+  PacientePositive
+  PacienteNegative
+}
+
+// ─────────────────────────────────────────────
+// ABSTRACT BASE → Admin / Doctor / Patient
+// (Prisma no soporta herencia nativa; se modela
+//  con una relación 1:1 hacia la tabla User base)
+// ─────────────────────────────────────────────
+
+model User {
+  id        Int      @id @default(autoincrement())
+  uuid      String   @unique @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  dni       String
+  firstnames String
+  lastnames  String
+  email      String  @unique
+  password   String
+  cellphone  String
+  photo      String?
+  state      Boolean
+  birthDate  DateTime
+
+  // Relaciones 1:1 con los subtipos
+  admin     Admin?
+  doctor    Doctor?
+  patient   Patient?
+
+  // Notificaciones recibidas
+  notifications Notification[]
+}
+
+// ─────────────────────────────────────────────
+// ADMIN
+// ─────────────────────────────────────────────
+
+model Admin {
+  id        Int      @id @default(autoincrement())
+  uuid      String   @unique @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId Int  @unique
+  user   User @relation(fields: [userId], references: [id])
+
+  // Un Admin puede revisar muchos FormRegistry
+  formRegistries FormRegistry[]
+}
+
+// ─────────────────────────────────────────────
+// DOCTOR
+// ─────────────────────────────────────────────
+
+model Doctor {
+  id        Int      @id @default(autoincrement())
+  uuid      String   @unique @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId Int  @unique
+  user   User @relation(fields: [userId], references: [id])
+
+  licence        String
+  description    String
+  experienceTime String
+  score          Float       @default(0)
+  totalScores    Int         @default(0)
+  stateDoctor    StateDoctor @default(Pending)
+  price          Float
+
+  // Relaciones
+  address         Address?
+  specialities    SpecialityDoctor[]
+  appointments    Appointment[]
+  scores          ScoreDoctor[]
+  formRegistries  FormRegistry[]
+}
+
+// ─────────────────────────────────────────────
+// PATIENT
+// ─────────────────────────────────────────────
+
+model Patient {
+  id        Int      @id @default(autoincrement())
+  uuid      String   @unique @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId Int  @unique
+  user   User @relation(fields: [userId], references: [id])
+
+  bloodType  BloodType
+  allergies  String?
+  diseases   String?
+  medicines  String?
+
+  // Relaciones
+  appointments Appointment[]
+  scores       ScoreDoctor[]
+}
+
+// ─────────────────────────────────────────────
+// ADDRESS  (1:1 con Doctor)
+// ─────────────────────────────────────────────
+
+model Address {
+  id        Int      @id @default(autoincrement())
+  uuid      String   @unique @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  longitude    Float
+  latitude     Float
+  indications  String?
+  country      String
+  province     String
+  canton       String
+  city         String
+
+  doctorId Int    @unique
+  doctor   Doctor @relation(fields: [doctorId], references: [id])
+}
+
+// ─────────────────────────────────────────────
+// SPECIALITY
+// ─────────────────────────────────────────────
+
+model Speciality {
+  id        Int      @id @default(autoincrement())
+  uuid      String   @unique @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name        String
+  description String
+  icon        String?
+  state       Boolean @default(true)
+
+  // Relación N:M con Doctor a través de SpecialityDoctor
+  doctors SpecialityDoctor[]
+}
+
+// ─────────────────────────────────────────────
+// SPECIALITY_DOCTOR  (tabla pivote N:M)
+// ─────────────────────────────────────────────
+
+model SpecialityDoctor {
+  id        Int      @id @default(autoincrement())
+  uuid      String   @unique @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  doctorId     Int
+  specialityId Int
+
+  doctor     Doctor     @relation(fields: [doctorId], references: [id])
+  speciality Speciality @relation(fields: [specialityId], references: [id])
+
+  @@unique([doctorId, specialityId])
+}
+
+// ─────────────────────────────────────────────
+// APPOINTMENT
+// ─────────────────────────────────────────────
+
+model Appointment {
+  id        Int      @id @default(autoincrement())
+  uuid      String   @unique @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  startDate           DateTime
+  endDate             DateTime
+  observationPatient  String?
+  rejectionReason     String?
+  stateAppointment    StateAppointment @default(Pending)
+
+  doctorId  Int
+  patientId Int
+
+  doctor  Doctor  @relation(fields: [doctorId], references: [id])
+  patient Patient @relation(fields: [patientId], references: [id])
+
+  // Una cita puede tener una puntuación
+  score ScoreDoctor?
+}
+
+// ─────────────────────────────────────────────
+// SCORE_DOCTOR
+// ─────────────────────────────────────────────
+
+model ScoreDoctor {
+  id        Int      @id @default(autoincrement())
+  uuid      String   @unique @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  score   Int    // 1-5
+  comment String?
+
+  doctorId      Int
+  appointmentId Int    @unique
+  patientId     Int
+
+  doctor      Doctor      @relation(fields: [doctorId], references: [id])
+  appointment Appointment @relation(fields: [appointmentId], references: [id])
+  patient     Patient     @relation(fields: [patientId], references: [id])
+}
+
+// ─────────────────────────────────────────────
+// FORM_REGISTRY  (revisión de Doctor por Admin)
+// ─────────────────────────────────────────────
+
+model FormRegistry {
+  id        Int      @id @default(autoincrement())
+  uuid      String   @unique @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cv          String
+  observation String?
+
+  adminId  Int
+  doctorId Int
+
+  admin  Admin  @relation(fields: [adminId], references: [id])
+  doctor Doctor @relation(fields: [doctorId], references: [id])
+}
+
+// ─────────────────────────────────────────────
+// NOTIFICATION
+// ─────────────────────────────────────────────
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  uuid      String   @unique @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  notificationType NotificationType
+
+  receiverId Int
+  receiver   User @relation(fields: [receiverId], references: [id])
+}
