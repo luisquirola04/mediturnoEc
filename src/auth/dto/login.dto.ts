@@ -6,6 +6,6 @@ export class LoginDto {
   email: string;
 
   @IsNotEmpty()
-  @MinLength(6)
+  @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres' }) 
   password: string;
 }
